@@ -1,30 +1,19 @@
-# -*- coding: utf-8 -*- 
-# !/usr/bin/python
-
-##############################################################################
-#                                                                            #
-#                           By Alessandro ZANNI                              #
-#                                                                            #
-##############################################################################
-
-# Disclaimer: Do Not Use this program for illegal purposes ;)
-
 import argparse
 import logging
+import os
 import sys
 import time
-import os
 
-from lazagne.config.write_output import write_in_file, StandardOutput
-from lazagne.config.manage_modules import get_categories
 from lazagne.config.constant import constant
+from lazagne.config.manage_modules import get_categories
 from lazagne.config.run import run_lazagne, create_module_dic
+from lazagne.config.write_output import write_in_file, StandardOutput
 
 constant.st = StandardOutput()  # Object used to manage the output / write functions (cf write_output file)
 modules = create_module_dic()
 
 
-def output(output_dir=None, txt_format=False, json_format=False, all_format=False):
+def configure_output(output_dir=None, txt_format=False, json_format=False, all_format=False):
     if output_dir:
         if os.path.isdir(output_dir):
             constant.folder_name = output_dir
@@ -49,13 +38,12 @@ def output(output_dir=None, txt_format=False, json_format=False, all_format=Fals
             constant.st.write_header()
 
 
-def quiet_mode(is_quiet_mode=False):
+def configure_quiet_mode(is_quiet_mode=False):
     if is_quiet_mode:
         constant.quiet_mode = True
 
 
-def verbosity(verbose=0):
-    # Write on the console + debug file
+def configure_verbosity(verbose=0):
     if verbose == 0:
         level = logging.CRITICAL
     elif verbose == 1:
@@ -68,18 +56,18 @@ def verbosity(verbose=0):
     stream.setFormatter(formatter)
     root = logging.getLogger()
     root.setLevel(level)
-    # If other logging are set
+    # If other logging handlers are set
     for r in root.handlers:
         r.setLevel(logging.CRITICAL)
     root.addHandler(stream)
 
 
-def manage_advanced_options(user_password=None):
+def configure_advanced_options(user_password=None):
     if user_password:
         constant.user_password = user_password
 
 
-def runLaZagne(category_selected='all', subcategories={}, password=None):
+def run_lazagne_module(category_selected='all', subcategories=None, password=None):
     """
     This function will be removed, still there for compatibility with other tools
     Everything is on the config/run.py file
@@ -90,148 +78,115 @@ def runLaZagne(category_selected='all', subcategories={}, password=None):
 
 def clean_args(arg):
     """
-    Remove not necessary values to get only subcategories
+    Remove unnecessary values to get only subcategories
     """
-    for i in ['output', 'write_normal', 'write_json', 'write_all', 'verbose', 'auditType', 'quiet']:
-        try:
-            del arg[i]
-        except Exception:
-            pass
+    keys_to_remove = [
+        'output', 'write_normal', 'write_json', 'write_all', 'verbose', 'auditType', 'quiet'
+    ]
+    for key in keys_to_remove:
+        arg.pop(key, None)
     return arg
 
 
-if __name__ == '__main__':
-
+def parse_arguments():
     parser = argparse.ArgumentParser(description=constant.st.banner, formatter_class=argparse.RawTextHelpFormatter)
     parser.add_argument('-version', action='version', version='Version ' + str(constant.CURRENT_VERSION),
                         help='laZagne version')
 
     # ------------------------------------------- Permanent options -------------------------------------------
     # Version and verbosity
-    PPoptional = argparse.ArgumentParser(
-        add_help=False,
-        formatter_class=lambda prog: argparse.HelpFormatter(prog,
-                                                            max_help_position=constant.max_help)
-    )
-    PPoptional._optionals.title = 'optional arguments'
-    PPoptional.add_argument('-v', dest='verbose', action='count', default=0, help='increase verbosity level')
-    PPoptional.add_argument('-quiet', dest='quiet', action='store_true', default=False,
-                            help='quiet mode: nothing is printed to the output')
+    parser.add_argument('-v', dest='verbose', action='count', default=0, help='increase verbosity level')
+    parser.add_argument('-quiet', dest='quiet', action='store_true', default=False,
+                        help='quiet mode: nothing is printed to the output')
 
     # Output
-    PWrite = argparse.ArgumentParser(
-        add_help=False,
-        formatter_class=lambda prog: argparse.HelpFormatter(prog,
-                                                            max_help_position=constant.max_help)
-    )
-    PWrite._optionals.title = 'Output'
-    PWrite.add_argument('-oN', dest='write_normal', action='store_true', default=None,
+    parser.add_argument('-oN', dest='write_normal', action='store_true', default=None,
                         help='output file in a readable format')
-    PWrite.add_argument('-oJ', dest='write_json', action='store_true', default=None,
+    parser.add_argument('-oJ', dest='write_json', action='store_true', default=None,
                         help='output file in a json format')
-    PWrite.add_argument('-oA', dest='write_all', action='store_true', default=None, help='output file in both format')
-    PWrite.add_argument('-output', dest='output', action='store', default='.',
+    parser.add_argument('-oA', dest='write_all', action='store_true', default=None, help='output file in both formats')
+    parser.add_argument('-output', dest='output', action='store', default='.',
                         help='destination path to store results (default:.)')
 
     # Windows user password
-    PPwd = argparse.ArgumentParser(
-        add_help=False,
-        formatter_class=lambda prog: argparse.HelpFormatter(
-            prog,
-            max_help_position=constant.max_help)
-    )
-    PPwd._optionals.title = 'Windows User Password'
-    PPwd.add_argument('-password', dest='password', action='store',
-                      help='Windows user password (used to decrypt creds files)')
+    parser.add_argument('-password', dest='password', action='store', help='Windows user password')
 
-    # -------------------------- Add options and suboptions to all modules --------------------------
-    all_subparser = []
+    # Add options and suboptions to all modules
     all_categories = get_categories()
     for c in all_categories:
-        all_categories[c]['parser'] = argparse.ArgumentParser(
+        category_parser = argparse.ArgumentParser(
             add_help=False,
-            formatter_class=lambda prog: argparse.HelpFormatter(prog,
-                                                                max_help_position=constant.max_help)
+            formatter_class=lambda prog: argparse.HelpFormatter(prog, max_help_position=constant.max_help)
         )
-        all_categories[c]['parser']._optionals.title = all_categories[c]['help']
+        category_parser._optionals.title = all_categories[c]['help']
 
         # Manage options
-        all_categories[c]['subparser'] = []
         for module in modules[c]:
             m = modules[c][module]
-            all_categories[c]['parser'].add_argument(m.options['command'], action=m.options['action'],
-                                                 dest=m.options['dest'], help=m.options['help'])
+            category_parser.add_argument(
+                m.options['command'], action=m.options['action'], dest=m.options['dest'], help=m.options['help']
+            )
 
             # Manage all suboptions by modules
             if m.suboptions and m.name != 'thunderbird':
-                tmp = []
                 for sub in m.suboptions:
-                    tmp_subparser = argparse.ArgumentParser(
+                    subparser = argparse.ArgumentParser(
                         add_help=False,
-                        formatter_class=lambda prog: argparse.HelpFormatter(
-                            prog,
-                            max_help_position=constant.max_help)
+                        formatter_class=lambda prog: argparse.HelpFormatter(prog, max_help_position=constant.max_help)
                     )
-                    tmp_subparser._optionals.title = sub['title']
+                    subparser._optionals.title = sub['title']
                     if 'type' in sub:
-                        tmp_subparser.add_argument(sub['command'], type=sub['type'], action=sub['action'],
-                                                   dest=sub['dest'], help=sub['help'])
+                        subparser.add_argument(
+                            sub['command'], type=sub['type'], action=sub['action'], dest=sub['dest'],
+                            help=sub['help']
+                        )
                     else:
-                        tmp_subparser.add_argument(sub['command'], action=sub['action'], dest=sub['dest'],
-                                                   help=sub['help'])
-                    tmp.append(tmp_subparser)
-                    all_subparser.append(tmp_subparser)
-                    all_categories[c]['subparser'] += tmp
-
-    # ------------------------------------------- Print all -------------------------------------------
-
-    parents = [PPoptional] + all_subparser + [PPwd, PWrite]
-    dic = {'all': {'parents': parents, 'help': 'Run all modules'}}
-    for c in all_categories:
-        parser_tab = [PPoptional, all_categories[c]['parser']]
-        if 'subparser' in all_categories[c]:
-            if all_categories[c]['subparser']:
-                parser_tab += all_categories[c]['subparser']
-        parser_tab += [PPwd, PWrite]
-        dic_tmp = {c: {'parents': parser_tab, 'help': 'Run %s module' % c}}
-        # Concatenate 2 dic
-        dic = dict(dic, **dic_tmp)
+                        subparser.add_argument(
+                            sub['command'], action=sub['action'], dest=sub['dest'], help=sub['help']
+                        )
+                    category_parser.add_argument(subparser)
 
     # Main commands
     subparsers = parser.add_subparsers(help='Choose a main command')
-    for d in dic:
-        subparsers.add_parser(d, parents=dic[d]['parents'], help=dic[d]['help']).set_defaults(auditType=d)
+    subparsers.required = True
+    subparsers.dest = 'auditType'
 
-    # ------------------------------------------- Parse arguments -------------------------------------------
+    subparsers.add_parser('all', parents=[parser], help='Run all modules')
+    for c in all_categories:
+        subparser = subparsers.add_parser(c, parents=[parser], help='Run {} module'.format(c))
+        subparser.set_defaults(auditType=c)
 
-    if len(sys.argv) == 1:
-        parser.print_help()
-        sys.exit(1)
+    return parser.parse_args()
 
-    args = dict(parser.parse_args()._get_kwargs())
-    arguments = parser.parse_args()
+
+def main():
+    args = parse_arguments()
 
     # Define constant variables
-    output(
-        output_dir=args['output'],
-        txt_format=args['write_normal'],
-        json_format=args['write_json'],
-        all_format=args['write_all']
+    configure_output(
+        output_dir=args.output,
+        txt_format=args.write_normal,
+        json_format=args.write_json,
+        all_format=args.write_all
     )
-    verbosity(verbose=args['verbose'])
-    manage_advanced_options(user_password=args.get('password', None))
-    quiet_mode(is_quiet_mode=args['quiet'])
+    configure_verbosity(verbose=args.verbose)
+    configure_advanced_options(user_password=args.password)
+    configure_quiet_mode(is_quiet_mode=args.quiet)
 
     # Print the title
     constant.st.first_title()
 
     start_time = time.time()
 
-    category = args['auditType']
-    subcategories = clean_args(args)
+    category = args.auditType
+    subcategories = clean_args(vars(args))
 
-    for r in runLaZagne(category_selected=category, subcategories=subcategories, password=args.get('password', None)):
+    for result in run_lazagne(category_selected=category, subcategories=subcategories, password=args.password):
         pass
 
     write_in_file(constant.stdout_result)
     constant.st.print_footer(elapsed_time=str(time.time() - start_time))
+
+
+if __name__ == '__main__':
+    main()
